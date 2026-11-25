@@ -22,11 +22,18 @@
 @media (max-width:880px){.wrap{width:calc(100% - 56px)}.hero{min-height:530px}.hero h1{font-size:clamp(4rem,13vw,7rem)}.section-intro{grid-template-columns:1fr;gap:.8rem}.story{grid-template-columns:1fr}.lane{grid-template-columns:repeat(3,minmax(0,1fr))}.stage{padding:.75rem .52rem;text-align:center;font-size:.97rem}}
 @media (max-width:640px){.wrap{width:calc(100% - 36px)}.bar{min-height:65px;gap:.45rem}nav{gap:.65rem}nav a{font-size:.83rem}.nav-cv{padding:.45rem .6rem}.mast{min-height:0}.mast::before{background-position:65% 50%}.mast::after{background:linear-gradient(90deg,#061c19e8,#061c1980 72%,#061c194f),linear-gradient(0deg,#081b19,transparent 44%)}.hero{padding-top:4.5rem;padding-bottom:3.1rem;min-height:0}.hero h1{font-size:clamp(3.55rem,13.4vw,5.7rem)}.hero-copy{margin-top:1.15rem}.hero .eyebrow{font-size:.78rem}.history,.lab-grid,.contact-grid,.education{grid-template-columns:1fr}.route small{font-size:.78rem}.stage-view{min-height:0}.end{margin-top:2rem}.email{min-height:0}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+.mast::before{z-index:-3}
+.sea-traffic{position:absolute;inset:0;width:100%;height:100%;z-index:-2;pointer-events:none}
+.traffic-toggle{position:absolute;right:0;bottom:.6rem;min-height:36px;padding:.3rem .72rem;border:1px solid #e9f4e37a;border-radius:999px;color:#f0f8ed;background:#0a201fbd;font-size:.82rem;line-height:1.15}
+.traffic-toggle:hover{background:#163735;border-color:#eef5e9}
+.traffic-toggle[hidden]{display:none}
+@media(prefers-reduced-motion:reduce){.sea-traffic,.traffic-toggle{display:none}}
 </style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="mast" id="top">
+  <canvas class="sea-traffic" aria-hidden="true"></canvas>
   <div class="wrap bar">
     <a class="mark" href="#top" aria-label="Steve Phung home">SP<span>.</span></a>
     <nav aria-label="Main navigation"><a href="#experience">Experience</a><a href="#ai-demo">AI demo</a><a href="#resume" class="nav-cv">Download CV</a></nav>
@@ -39,6 +46,7 @@
       <a class="pill primary" href="#resume">Download CV</a>
       <a class="pill secondary" href="#experience">Explore experience</a>
     </div>
+    <button class="traffic-toggle" type="button" hidden>Pause ships</button>
   </div>
   <div class="wrap route" aria-label="Experience on the Vietnam to United States trade lane">
     <div><strong>Vietnam</strong><small>Based in Hanoi</small></div>
@@ -192,6 +200,209 @@ if ("IntersectionObserver" in window && matchMedia("(prefers-reduced-motion: no-
   document.querySelectorAll("[data-reveal]").forEach(element => observer.observe(element));
   document.body.classList.add("motion");
 }
+function initSeaTraffic() {
+  const canvas = document.querySelector(".sea-traffic");
+  const button = document.querySelector(".traffic-toggle");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const preference = matchMedia("(prefers-reduced-motion: reduce)");
+  const fleet = [
+    {desktop: [[.21,.92],[.52,.79],[.83,.84],[1.18,.59]],
+     mobile: [[.08,.9],[.53,.87],[.91,.8],[1.28,.64]],
+     length: 142, period: 16, phase: .57, hue: "114,233,211", cargo: ["#ba6541","#deb079","#6b9a8e","#577778"]},
+    {desktop: [[1.19,.24],[.96,.29],[.66,.31],[.37,.44]],
+     mobile: [[1.27,.25],[.92,.30],[.77,.38],[.39,.48]],
+     length: 102, period: 14, phase: .44, hue: "255,185,122", cargo: ["#ce855a","#a9a485","#658982","#b4654d"]},
+    {desktop: [[.39,.73],[.68,.69],[.86,.53],[1.14,.35]],
+     mobile: [[.31,.76],[.64,.70],[.87,.60],[1.22,.5]],
+     length: 64, period: 11, phase: .72, hue: "197,233,196", cargo: ["#829f8b","#c9a477","#b67559"]}
+  ];
+
+  let width = 0;
+  let height = 0;
+  let elapsed = 0;
+  let previousFrame;
+  let frame = null;
+  let paused = false;
+  let inView = true;
+
+  function point(route, t) {
+    const [a,b,c,d] = route;
+    const s = 1 - t;
+    const blend = [s*s*s,3*s*s*t,3*s*t*t,t*t*t];
+    return {
+      x: width * (a[0]*blend[0] + b[0]*blend[1] + c[0]*blend[2] + d[0]*blend[3]),
+      y: height * (a[1]*blend[0] + b[1]*blend[1] + c[1]*blend[2] + d[1]*blend[3])
+    };
+  }
+
+  function wake(size, hue, time) {
+    const foam = ctx.createLinearGradient(-size*2.4, 0, -size*.38, 0);
+    foam.addColorStop(0, "transparent");
+    foam.addColorStop(.35, "rgba(" + hue + ",.25)");
+    foam.addColorStop(1, "rgba(233,255,247,.84)");
+    ctx.strokeStyle = foam;
+    for (const sign of [-1,1]) {
+      ctx.lineWidth = Math.max(1.4, size*.026);
+      ctx.beginPath();
+      ctx.moveTo(-size*.43, sign*size*.08);
+      ctx.bezierCurveTo(-size*.9, sign*size*.14, -size*1.5, sign*size*.40, -size*2.4, sign*size*.57);
+      ctx.stroke();
+      ctx.lineWidth = Math.max(.7, size*.011);
+      for (let i = 0; i < 13; i += 1) {
+        const drift = (i/13 + time*.52) % 1;
+        const x = -size*(.48 + drift*1.72);
+        const y = sign*size*(.06 + drift*.43 + Math.sin(i*3.1 + time*2)*.04);
+        ctx.beginPath();
+        ctx.moveTo(x,y);
+        ctx.quadraticCurveTo(x-size*.16,y+sign*size*.06,x-size*.3,y+sign*size*.09);
+        ctx.stroke();
+      }
+    }
+    ctx.lineWidth = size*.035;
+    ctx.beginPath();
+    ctx.moveTo(-size*.43,0);
+    ctx.bezierCurveTo(-size*.9,size*.043,-size*1.2,-size*.05,-size*1.66,0);
+    ctx.stroke();
+  }
+
+  function hull(x, y, heading, size, ship, opacity, time) {
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.rotate(heading);
+    ctx.globalAlpha = opacity;
+    wake(size,ship.hue,time);
+    ctx.scale(size/100,size/100);
+
+    ctx.shadowColor = "#020c0b";
+    ctx.shadowBlur = 13;
+    ctx.shadowOffsetY = 5;
+    ctx.fillStyle = "#152d2a";
+    ctx.strokeStyle = "#cde4d1";
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.moveTo(-47,-10);
+    ctx.lineTo(27,-11);
+    ctx.quadraticCurveTo(44,-9,53,0);
+    ctx.quadraticCurveTo(44,9,27,11);
+    ctx.lineTo(-47,10);
+    ctx.quadraticCurveTo(-53,0,-47,-10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    ctx.strokeStyle = "rgba(" + ship.hue + ",.47)";
+    ctx.lineWidth = .65;
+    ctx.beginPath();
+    ctx.moveTo(-41,-8);
+    ctx.lineTo(28,-8);
+    ctx.lineTo(46,0);
+    ctx.lineTo(28,8);
+    ctx.lineTo(-41,8);
+    ctx.stroke();
+    for (let col = 0; col < 6; col += 1) {
+      for (let row = 0; row < 3; row += 1) {
+        const bx = -27 + col*9;
+        const by = -7 + row*5;
+        ctx.fillStyle = ship.cargo[(col + row*3) % ship.cargo.length];
+        ctx.fillRect(bx,by,7.5,4);
+        ctx.fillStyle = "#fff3cf60";
+        ctx.fillRect(bx+.6,by+.4,6.3,.65);
+      }
+    }
+    ctx.fillStyle = "#d6dac2";
+    ctx.fillRect(-43,-6.5,11,13);
+    ctx.fillStyle = "#384d47";
+    ctx.fillRect(-41,-4.6,7,9.2);
+    ctx.fillStyle = "#d5e6ba";
+    ctx.fillRect(29,-.7,10,1.4);
+    ctx.shadowColor = "rgb(" + ship.hue + ")";
+    ctx.shadowBlur = 11;
+    ctx.fillStyle = "#f8f5c8";
+    ctx.beginPath();
+    ctx.arc(44,0,1.9,0,Math.PI*2);
+    ctx.fill();
+    ctx.shadowBlur = 5;
+    ctx.fillStyle = "#ec916e";
+    ctx.fillRect(-23,-9,2.1,2.1);
+    ctx.fillStyle = "#97f0c2";
+    ctx.fillRect(-23,7,2.1,2.1);
+    ctx.restore();
+  }
+
+  function paint() {
+    ctx.clearRect(0,0,width,height);
+    const mobile = width < 640;
+    const scale = mobile ? Math.min(.74, .55 + (width - 320)/1400) : Math.min(1.25, Math.max(.76,width/1300));
+    for (const ship of fleet) {
+      const route = mobile ? ship.mobile : ship.desktop;
+      const t = (elapsed / ship.period + ship.phase) % 1;
+      const location = point(route,t);
+      const forward = point(route,t + .002);
+      const heading = Math.atan2(forward.y - location.y, forward.x - location.x);
+      const fade = Math.min(1,t/.12,(1-t)/.13);
+      hull(location.x, location.y, heading, ship.length*scale, ship, fade, elapsed);
+    }
+  }
+
+  function tick(timestamp) {
+    if (previousFrame !== undefined) elapsed += Math.min((timestamp - previousFrame)/1000,.045);
+    previousFrame = timestamp;
+    paint();
+    frame = requestAnimationFrame(tick);
+  }
+
+  function update() {
+    button.hidden = preference.matches;
+    button.textContent = paused ? "Play ships" : "Pause ships";
+    const shouldPlay = !paused && !preference.matches && !document.hidden && inView;
+    if (shouldPlay && frame === null) frame = requestAnimationFrame(tick);
+    if (!shouldPlay && frame !== null) {
+      cancelAnimationFrame(frame);
+      frame = null;
+      previousFrame = undefined;
+    }
+    if (preference.matches) ctx.clearRect(0,0,width,height);
+  }
+
+  function resize() {
+    const size = canvas.getBoundingClientRect();
+    if (!size.width || !size.height) return;
+    width = size.width;
+    height = size.height;
+    const density = Math.min(devicePixelRatio || 1,1.6);
+    canvas.width = Math.round(width*density);
+    canvas.height = Math.round(height*density);
+    ctx.setTransform(density,0,0,density,0,0);
+    if (!preference.matches) paint();
+  }
+
+  button.addEventListener("click", () => {
+    paused = !paused;
+    update();
+  });
+  preference.addEventListener("change", () => {
+    resize();
+    update();
+  });
+  document.addEventListener("visibilitychange",update);
+  if ("ResizeObserver" in window) new ResizeObserver(resize).observe(canvas.parentElement);
+  else window.addEventListener("resize",resize);
+  if ("IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(([entry]) => {
+      inView = entry.isIntersecting;
+      update();
+    });
+    observer.observe(canvas.parentElement);
+  }
+  resize();
+  update();
+}
+initSeaTraffic();
 </script>
 </body>
 </html>
